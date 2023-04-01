@@ -6,7 +6,7 @@
 ```
 git checkout utils
 ```
-* [ ] syscall lab
+* [x] syscall lab
 ```
 git checkout syscall
 ```
