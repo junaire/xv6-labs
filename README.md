@@ -14,3 +14,7 @@ git checkout syscall
 ```
 git checkout pgtbl
 ```
+* [x] traps lab
+```
+git checkout traps
+```
