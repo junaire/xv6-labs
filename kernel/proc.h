@@ -110,4 +110,6 @@ struct proc {
   int n;
   uint64 alarm_handler;
   int passed;
+  struct trapframe* alarm_frame;
+  int is_handling;
 };
