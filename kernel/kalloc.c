@@ -23,6 +23,8 @@ struct {
   struct run *freelist;
 } kmem;
 
+int page_ref[32725] = {0};
+
 void
 kinit()
 {
@@ -46,6 +48,13 @@ freerange(void *pa_start, void *pa_end)
 void
 kfree(void *pa)
 {
+  int *ref = &page_ref[PGROUNDDOWN((uint64)pa) / PGSIZE];
+  if (*ref > 1) {
+    *ref -= 1;
+    return;
+  }
+  *ref -= 1;
+
   struct run *r;
 
   if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
@@ -78,5 +87,6 @@ kalloc(void)
 
   if(r)
     memset((char*)r, 5, PGSIZE); // fill with junk
+  page_ref[PGROUNDDOWN((uint64)r) / PGSIZE] = 1;
   return (void*)r;
 }

@@ -10,6 +10,7 @@ struct spinlock tickslock;
 uint ticks;
 
 extern char trampoline[], uservec[], userret[];
+extern int page_ref[];
 
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
@@ -50,7 +51,8 @@ usertrap(void)
   // save user program counter.
   p->trapframe->epc = r_sepc();
   
-  if(r_scause() == 8){
+  uint64 cause = r_scause();
+  if(cause == 8){
     // system call
 
     if(p->killed)
@@ -65,6 +67,36 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if (cause == 15) {
+    uint64 va = r_stval();
+    // printf("start page fault: %p\n", va);
+    va = PGROUNDDOWN(va);
+
+    pte_t *pte;
+    if((pte = walk(p->pagetable, va, 0)) == 0)
+      panic("cant find pa");
+
+    // printf("pte = %p\n", *pte);
+    // printf("flags = %p\n", PTE_FLAGS(*pte));
+
+    if ((*pte & PTE_COW) == 0) {
+      printf("page fault: %p\n", va);
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    } else {
+      uint64 ka = (uint64)kalloc();
+      if (ka == 0) {
+        p->killed = 1;
+      } else {
+        // printf("handle: pte = %p va = %p create pa (%p)\n", va, *pte, ka);
+        // release the reference!
+        page_ref[PGROUNDDOWN((uint64)PTE2PA(*pte)) / PGSIZE] -= 1;
+        memmove((void*)ka, (char*)PTE2PA(*pte), PGSIZE);
+        uint flag = PTE_FLAGS(*pte);
+        *pte = PA2PTE(ka) | flag | PTE_W;
+      }
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
