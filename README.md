@@ -18,3 +18,7 @@ git checkout pgtbl
 ```
 git checkout traps
 ```
+* [x] cow lab
+```
+git checkout cow
+```
