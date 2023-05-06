@@ -22,3 +22,7 @@ git checkout traps
 ```
 git checkout cow
 ```
+* [x] thread lab
+```
+git checkout thread
+```
