@@ -1,0 +1,19 @@
+## struct mbuf
+mbuf holds the packet needs to be sent.
+
+The E1000 requires these buffers to be described by an array of "descriptors" in RAM.
+
+struct rx_desc describes the descriptor format. The array of descriptors is called the receive/receive ring/queue.
+
+You must place a pointer to the packet data in a descriptor in the TX (transmit) ring. You will need to ensure that each mbuf is eventually freed, but only after E1000 has finished (E1000_TXD_STAT_DD bit has set).
+
+When the E1000 receives each packet from the ethernet, it first DMAs the packet to the mbuf pointed to by the next RX (receive) ring descriptor, and then generates an interrupt.
+
+Your e1000_recv() code must scan the RX ring and deliver each new packet's mbuf to the network by calling net_rx().
+
+You will then need to allocate a new mbuf and place it into the descriptor, so that when the E1000 reaches that point in the RX ring again it finds a fresh buffer into which to DMA a new packet.
+
+## How to communicate with the driver?
+Use `regs`.
+
+
