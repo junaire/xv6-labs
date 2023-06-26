@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "fcntl.h"
 
 struct spinlock tickslock;
 uint ticks;
@@ -67,7 +68,42 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else {
+  } else if (r_scause() == 13 || r_scause() == 15) {
+    int is_mmap_trap = 0;
+    // load or store page faults.
+    uint64 va = r_stval();
+    struct proc* p = myproc();
+    for (int i = 0; i < 16; ++i) {
+      // In the range.
+      if (va >= (uint64)p->vmas[i].addr &&
+          va < (uint64)p->vmas[i].addr + p->vmas[i].length) {
+        struct vma* v = &p->vmas[i];
+        // printf("allocate pysical pages for vmas[%d], addr=%p, length=%d\n", i, v->addr, v->length);
+        uint64 start = PGROUNDUP(v->addr);
+        // allocate pysical pages and map it.
+        for (int j = 0; j < (v->length + PGSIZE - 1) / PGSIZE; ++j) {
+          char* pa = kalloc();
+          // prefill zeros.
+          memset(pa, 0, PGSIZE);
+          int perm = 0;
+          if (v->prot & PROT_READ) perm |= PTE_R;
+          if (v->prot & PROT_WRITE) perm |= PTE_W;
+          if (mappages(p->pagetable, start, PGSIZE, (uint64)pa, perm|PTE_U) != 0)
+            panic("mmap page mapping error");
+          start += PGSIZE;
+        }
+        mmapread(v, PGROUNDUP(v->addr));
+        v->is_alloc = 1;
+        is_mmap_trap = 1;
+        break;
+      }
+    }
+    if (!is_mmap_trap) {
+      printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
+      printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
+      p->killed = 1;
+    }
+  } else{
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
     p->killed = 1;

@@ -301,6 +301,12 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  memmove(np->vmas, p->vmas, sizeof(p->vmas));
+  for (i = 0; i < 16; ++i) {
+    if (p->vmas[i].f)
+      np->vmas[i].f = filedup(p->vmas[i].f);
+  }
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -350,6 +356,20 @@ exit(int status)
       struct file *f = p->ofile[fd];
       fileclose(f);
       p->ofile[fd] = 0;
+    }
+  }
+
+
+  for (int i = 0; i < 16; ++i) {
+    struct vma *v = &p->vmas[i];
+    if (v->f != 0 && v->is_alloc != 0) {
+      int npages = (v->length + PGSIZE - 1) / PGSIZE;
+      // printf("exit: unmap vmas[%d] file=%p, v->addr=%p, v->length=%d, npages=%d\n", i, v->f, v->addr, v->length, npages);
+      uvmunmap(p->pagetable, v->addr, npages, 1);
+      if (v->f != 0)
+        fileclose(v->f);
+      v->f = 0;
+      v->is_alloc = 0;
     }
   }
 

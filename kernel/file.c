@@ -12,6 +12,7 @@
 #include "file.h"
 #include "stat.h"
 #include "proc.h"
+#include "fcntl.h"
 
 struct devsw devsw[NDEV];
 struct {
@@ -180,3 +181,100 @@ filewrite(struct file *f, uint64 addr, int n)
   return ret;
 }
 
+// fill the data from the open file.
+void mmapread(struct vma* v, uint64 va) {
+  ilock(v->f->ip);
+
+  int n;
+  if (v->length <= v->f->ip->size)
+    n = v->length;
+  else
+    n = v->f->ip->size;
+  int r;
+  if((r = readi(v->f->ip, 1, va, 0, n)) > 0) {
+    // v->f->off += r;
+  }
+
+  iunlock(v->f->ip);
+}
+
+uint64
+sys_mmap(void) {
+  int length, prot, flags, fd, i;
+  struct proc* p;
+  struct vma* v;
+  struct file* f;
+
+  if (argint(1, &length) < 0|| argint(2, &prot) < 0|| argint(3, &flags) < 0|| argint(4, &fd) < 0)
+    return -1;
+
+  p = myproc();
+  // get the struct file* via the fd.
+  if(fd < 0 || fd >= NOFILE || (f = p->ofile[fd]) == 0)
+    return -1;
+  // check that mmap doesn't allow read/write mapping of a
+  // file opened read-only.
+  if ((prot & PROT_READ) && (prot & PROT_WRITE) && (flags & MAP_SHARED) && !f->writable)
+    return -1;
+
+
+  for (i = 0; i < 16; ++i) {
+    v = &p->vmas[i];
+    // found an empty vma.
+    if (v->f == 0) {
+      v->length = length;
+      v->prot = prot;
+      v->flags = flags;
+      v->is_alloc = 0;
+
+      v->f = filedup(f);
+
+      if (i == 0)
+        v->addr = PGROUNDUP(p->sz);
+      else
+        v->addr = p->vmas[i-1].addr + p->vmas[i-1].length;
+
+      // printf("mmap: found an empty entry vma[%d] {.f =%p, .addr =%p, .length=%d}\n", i, v->f, v->addr, v->length);
+      return (uint64)v->addr;
+    }
+  }
+  return -1;
+}
+
+uint64
+sys_munmap(void) {
+  struct proc* p;
+  struct vma* v;
+  int i, length, npages;
+  uint64 addr;
+
+  if (argaddr(0, &addr) < 0|| argint(1, &length) < 0)
+    return -1;
+
+  npages = (length + PGSIZE - 1) / PGSIZE;
+  p = myproc();
+
+  for (i = 0; i < 16; ++i) {
+    v = &p->vmas[i];
+    if (v->f != 0 && addr >= v->addr && addr < (v->addr + v->length)) {
+      // write unmaped pages back.
+      if ((v->flags & MAP_SHARED) && addr == v->addr)
+        filewrite(v->f, addr, length);
+
+      // printf("unmap vma[%d] addr=%p length=%d npages=%d\n", i, v->addr, length, npages);
+      uvmunmap(p->pagetable, addr, npages, 1);
+
+      if (addr == v->addr && length < v->length) {
+        v->addr += length;
+        v->length -= length;
+      } else {
+        if (v->f != 0)
+          fileclose(v->f);
+        v->f = 0;
+        v->is_alloc = 0;
+      }
+      return 0;
+    }
+  }
+  return -1;
+}
