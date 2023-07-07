@@ -34,3 +34,7 @@ git checkout net
 ```
 git checkout fs
 ```
+* [x] mmap lab
+```
+git checkout mmap
+```
